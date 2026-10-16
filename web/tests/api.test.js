@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {onRequest, QUERIES} from '../functions/api/snapshot.js';
+const req=(method='GET',path='/api/snapshot')=>new Request('https://example.test'+path,{method});
+let calls=0;
+const DB={prepare(sql){assert.match(sql,/^SELECT /);assert.doesNotMatch(sql,/;|DELETE|INSERT|UPDATE|DROP/);return {sql};},async batch(stmts){calls++;return stmts.map(()=>({success:true,results:[]}));}};
+test('default-deny without opt-in',async()=>{calls=0;const r=await onRequest({request:req(),env:{DB}});assert.equal(r.status,403);assert.equal(calls,0);});
+test('write methods prohibited',async()=>{for(const method of ['POST','PUT','PATCH','DELETE'])assert.equal((await onRequest({request:req(method),env:{DB,READ_API_ENABLED:'true'}})).status,405);});
+test('no arbitrary SQL via query parameters',async()=>assert.equal((await onRequest({request:req('GET','/api/snapshot?sql=DROP'),env:{DB,READ_API_ENABLED:'true'}})).status,400));
+test('snapshot uses fixed batch and no cache',async()=>{const r=await onRequest({request:req(),env:{DB,READ_API_ENABLED:'true'}});assert.equal(r.status,200);assert.equal(r.headers.get('Cache-Control'),'private, no-store');const d=await r.json();for(const n of Object.keys(QUERIES))assert.deepEqual(d[n],[]);});
+test('missing binding is explicit',async()=>assert.equal((await onRequest({request:req(),env:{READ_API_ENABLED:'true'}})).status,503));
+test('errors sanitized',async()=>{const r=await onRequest({request:req(),env:{READ_API_ENABLED:'true',DB:{...DB,batch(){throw Error('sensitive');}}}});assert.equal(r.status,503);assert.doesNotMatch(await r.text(),/sensitive/);});
+test('no silently truncated snapshot',async()=>{const r=await onRequest({request:req(),env:{READ_API_ENABLED:'true',DB:{...DB,batch(){return Object.keys(QUERIES).map((_,i)=>({success:true,results:i===0?Array(2001).fill({}):[]}));}}}});assert.equal(r.status,503);});

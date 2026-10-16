@@ -1,0 +1,9 @@
+name = "aviation-ai-atlas"
+pages_build_output_dir = "./public"
+compatibility_date = "2026-10-15"
+[vars]
+READ_API_ENABLED = "false"
+[[d1_databases]]
+binding = "DB"
+database_name = "aviation-ai-landscape"
+database_id = "98fc4415-1196-4b6e-be30-d242d4ecbe7d"
